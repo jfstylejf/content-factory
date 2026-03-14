@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { ensureDb } from '@/lib/db'
 import { testFeishuWebhook } from '@/lib/feishu-webhook'
 
 interface SystemSetting {
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const key = searchParams.get('key')
 
-    const db = getDb()
+    const db = await ensureDb()
 
     if (key) {
       // 获取单个设置
@@ -90,7 +90,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 检查设置是否存在
     const existing = db

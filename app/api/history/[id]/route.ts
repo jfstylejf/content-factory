@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { ensureDb } from '@/lib/db'
 
 // GET - 获取单条历史记录详情
 export async function GET(
@@ -16,7 +16,7 @@ export async function GET(
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     const stmt = db.prepare(`
       SELECT
@@ -77,7 +77,7 @@ export async function DELETE(
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 先检查记录是否存在
     const checkStmt = db.prepare('SELECT id FROM search_history WHERE id = ?')

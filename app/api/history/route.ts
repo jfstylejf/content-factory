@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { ensureDb } from '@/lib/db'
 
 // POST - 保存搜索历史
 export async function POST(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 将数据转换为 JSON 字符串存储
     const articlesJson = articlesData ? JSON.stringify(articlesData) : null
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const platform = searchParams.get('platform') // 可选的平台过滤
 
-    const db = getDb()
+    const db = await ensureDb()
 
     let query = `
       SELECT
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
 // DELETE - 清空所有历史记录
 export async function DELETE(request: NextRequest) {
   try {
-    const db = getDb()
+    const db = await ensureDb()
 
     const stmt = db.prepare('DELETE FROM search_history')
     const result = stmt.run()

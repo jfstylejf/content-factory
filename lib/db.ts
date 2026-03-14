@@ -1,28 +1,134 @@
-import Database from 'better-sqlite3'
+// @ts-ignore
+import initSqlJs from 'sql.js'
 import path from 'path'
+import fs from 'fs'
 
 // 获取数据库路径
 const DB_PATH = path.join(process.cwd(), 'data', 'app.db')
 
 // 初始化数据库连接
-let db: Database.Database | null = null
+let db: any = null
+let dbInitPromise: Promise<any> | null = null
 
-export function getDb() {
-  if (!db) {
+// 异步初始化数据库
+export async function initDb(): Promise<any> {
+  if (db) return db
+  
+  if (dbInitPromise) return dbInitPromise
+  
+  dbInitPromise = (async () => {
+    // 配置 sql.js 的 wasm 文件路径
+    const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
+    const wasmBinary = fs.readFileSync(wasmPath)
+    
+    const SQL = await initSqlJs({
+      wasmBinary: wasmBinary
+    })
+    
     // 确保数据目录存在
-    const fs = require('fs')
     const dataDir = path.join(process.cwd(), 'data')
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true })
     }
-
-    db = new Database(DB_PATH)
-    db.pragma('journal_mode = WAL')
-
+    
+    // 尝试加载现有数据库文件
+    if (fs.existsSync(DB_PATH)) {
+      const fileBuffer = fs.readFileSync(DB_PATH)
+      db = new SQL.Database(fileBuffer)
+    } else {
+      db = new SQL.Database()
+    }
+    
     // 初始化表结构
     initTables()
+    
+    // 保存数据库到文件
+    saveDb()
+    
+    return db
+  })()
+  
+  return dbInitPromise
+}
+
+// 同步获取数据库（兼容原有代码）
+export function getDb(): any {
+  if (!db) {
+    throw new Error('Database not initialized. Call initDb() first.')
   }
-  return db
+  return createDbWrapper(db)
+}
+
+// 保存数据库到文件
+export function saveDb() {
+  if (db) {
+    const data = db.export()
+    const buffer = Buffer.from(data)
+    fs.writeFileSync(DB_PATH, buffer)
+  }
+}
+
+// 确保数据库已初始化的辅助函数
+export async function ensureDb(): Promise<any> {
+  if (!db) {
+    await initDb()
+  }
+  return createDbWrapper(db)
+}
+
+// 创建兼容 better-sqlite3 API 的包装器
+function createDbWrapper(database: any) {
+  return {
+    prepare: (sql: string) => {
+      return {
+        run: (...params: any[]) => {
+          database.run(sql, params)
+          saveDb()
+          return { 
+            changes: database.getRowsModified(),
+            lastInsertRowid: getLastInsertRowId(database)
+          }
+        },
+        get: (...params: any[]) => {
+          const stmt = database.prepare(sql)
+          stmt.bind(params)
+          if (stmt.step()) {
+            const row = stmt.getAsObject()
+            stmt.free()
+            return row
+          }
+          stmt.free()
+          return undefined
+        },
+        all: (...params: any[]) => {
+          const stmt = database.prepare(sql)
+          stmt.bind(params)
+          const results: any[] = []
+          while (stmt.step()) {
+            results.push(stmt.getAsObject())
+          }
+          stmt.free()
+          return results
+        }
+      }
+    },
+    exec: (sql: string) => {
+      database.exec(sql)
+      saveDb()
+    },
+    pragma: (pragma: string) => {
+      // sql.js 不支持 pragma，忽略
+    }
+  }
+}
+
+// 获取最后插入的行 ID
+function getLastInsertRowId(database: any): number {
+  const result = database.exec('SELECT last_insert_rowid() as id')
+  if (result.length > 0 && result[0].values.length > 0) {
+    return result[0].values[0][0] as number
+  }
+  return 0
 }
 
 // 初始化数据库表
@@ -53,7 +159,6 @@ function initTables() {
     console.log('✅ 已添加 ai_insights 字段到 search_history 表')
   } catch (error) {
     // 字段已存在时会抛出错误，忽略即可
-    // console.log('ai_insights 字段已存在')
   }
 
   // 创建索引以提高查询性能
@@ -176,23 +281,126 @@ function initTables() {
     )
   `)
 
+  // 创建视频表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS videos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      idea TEXT,
+      script TEXT,
+      prompt TEXT,
+      generation_type TEXT NOT NULL DEFAULT 'text2video' 
+        CHECK(generation_type IN ('text2video', 'image2video', 'video2video', 'digital_human')),
+      engine TEXT NOT NULL DEFAULT 'doubao' 
+        CHECK(engine IN ('doubao', 'wan', 'duix', 'tencent', 'heygen', 'd-id')),
+      duration INTEGER,
+      aspect_ratio TEXT DEFAULT '9:16',
+      resolution TEXT DEFAULT '1080p',
+      style TEXT,
+      source_image TEXT,
+      source_video TEXT,
+      video_url TEXT,
+      cover_url TEXT,
+      thumbnail_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' 
+        CHECK(status IN ('draft', 'generating', 'generated', 'publishing', 'published', 'failed')),
+      error TEXT,
+      platforms TEXT DEFAULT '[]',
+      publish_config TEXT,
+      scheduled_at INTEGER,
+      task_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER,
+      generated_at INTEGER,
+      published_at INTEGER,
+      digital_human_engine TEXT,
+      digital_human_mode TEXT,
+      digital_human_avatar_id TEXT,
+      digital_human_voice_id TEXT,
+      broadcast_text TEXT,
+      audio_url TEXT
+    )
+  `)
+
+  // 创建视频表索引
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_videos_status
+    ON videos(status)
+  `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_videos_created_at
+    ON videos(created_at DESC)
+  `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_videos_engine
+    ON videos(engine)
+  `)
+
+  // 创建视频发布记录表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS video_publish_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      video_id INTEGER NOT NULL,
+      platform TEXT NOT NULL 
+        CHECK(platform IN ('xiaohongshu', 'weixin_video', 'douyin', 'bilibili')),
+      title TEXT,
+      description TEXT,
+      tags TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' 
+        CHECK(status IN ('pending', 'publishing', 'success', 'failed')),
+      platform_video_id TEXT,
+      platform_url TEXT,
+      qr_code_url TEXT,
+      response_data TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      published_at INTEGER,
+      FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+    )
+  `)
+
+  // 创建视频发布记录表索引
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_video_publish_logs_video_id
+    ON video_publish_logs(video_id)
+  `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_video_publish_logs_platform
+    ON video_publish_logs(platform)
+  `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_video_publish_logs_status
+    ON video_publish_logs(status)
+  `)
+
   // 初始化飞书 Webhook 设置
-  const checkFeishuWebhook = db.prepare('SELECT * FROM system_settings WHERE key = ?').get('feishu_webhook')
-  if (!checkFeishuWebhook) {
-    db.prepare('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)').run(
-      'feishu_webhook',
-      'https://open.feishu.cn/open-apis/bot/v2/hook/a6d38d40-9f30-4996-ab6f-cd1ab8c1b058',
-      Date.now()
+  const checkFeishuStmt = db.prepare('SELECT * FROM system_settings WHERE key = ?')
+  checkFeishuStmt.bind(['feishu_webhook'])
+  const hasFeishuWebhook = checkFeishuStmt.step()
+  checkFeishuStmt.free()
+  
+  if (!hasFeishuWebhook) {
+    db.run(
+      'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)',
+      ['feishu_webhook', 'https://open.feishu.cn/open-apis/bot/v2/hook/a6d38d40-9f30-4996-ab6f-cd1ab8c1b058', Date.now()]
     )
   }
 
   // 初始化定时执行时间设置（默认早上8点）
-  const checkCronTime = db.prepare('SELECT * FROM system_settings WHERE key = ?').get('cron_time')
-  if (!checkCronTime) {
-    db.prepare('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)').run(
-      'cron_time',
-      '0 8 * * *', // 每天早上8点
-      Date.now()
+  const checkCronStmt = db.prepare('SELECT * FROM system_settings WHERE key = ?')
+  checkCronStmt.bind(['cron_time'])
+  const hasCronTime = checkCronStmt.step()
+  checkCronStmt.free()
+  
+  if (!hasCronTime) {
+    db.run(
+      'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)',
+      ['cron_time', '0 8 * * *', Date.now()]
     )
   }
 
@@ -202,6 +410,7 @@ function initTables() {
 // 关闭数据库连接
 export function closeDb() {
   if (db) {
+    saveDb()
     db.close()
     db = null
   }

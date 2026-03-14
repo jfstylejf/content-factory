@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { ensureDb } from '@/lib/db'
 
 // POST /api/articles - 保存文章草稿
 export async function POST(req: NextRequest) {
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
     const now = Date.now()
 
     // 插入文章
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 构建查询
     let query = 'SELECT * FROM articles'
@@ -190,7 +190,7 @@ export async function PUT(req: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 更新文章
     const stmt = db.prepare(`
@@ -252,7 +252,7 @@ export async function DELETE(req: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
     const stmt = db.prepare('DELETE FROM articles WHERE id = ?')
     const result = stmt.run(id)
 

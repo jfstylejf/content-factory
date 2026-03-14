@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { ensureDb } from '@/lib/db'
 
 interface ScheduledReport {
   id: number
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const keywordId = searchParams.get('keyword_id')
     const platform = searchParams.get('platform')
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 构建查询条件
     let query = 'SELECT * FROM scheduled_reports WHERE 1=1'

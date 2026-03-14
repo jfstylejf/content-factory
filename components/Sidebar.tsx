@@ -15,7 +15,8 @@ import {
   Menu,
   X,
   Clock,
-  Sparkles
+  Sparkles,
+  Video
 } from 'lucide-react'
 
 const menuItems = [
@@ -36,6 +37,12 @@ const menuItems = [
     label: '内容创作',
     icon: PenTool,
     description: 'AI智能创作'
+  },
+  {
+    href: '/video',
+    label: '视频创作',
+    icon: Video,
+    description: 'AI智能生成视频'
   },
   {
     href: '/rewrite',

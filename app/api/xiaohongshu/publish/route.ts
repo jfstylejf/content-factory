@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { ensureDb } from '@/lib/db'
 import {
   extractImagesFromMarkdown,
   markdownToPlainText,
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     // 从数据库获取文章
     console.log('📖 从数据库读取文章...')
-    const db = getDb()
+    const db = await ensureDb()
     const stmt = db.prepare('SELECT * FROM articles WHERE id = ?')
     const article: any = stmt.get(articleId)
 

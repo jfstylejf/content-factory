@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { ensureDb } from '@/lib/db'
 
 interface MonitoredKeyword {
   id: number
@@ -24,7 +24,7 @@ interface MonitoredKeyword {
  */
 export async function GET(request: NextRequest) {
   try {
-    const db = getDb()
+    const db = await ensureDb()
     const keywords = db
       .prepare('SELECT * FROM monitored_keywords ORDER BY created_at DESC')
       .all() as MonitoredKeyword[]
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 检查是否已存在相同的关键词和平台组合
     const existing = db
@@ -136,7 +136,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 检查关键词是否存在
     const existing = db
@@ -236,7 +236,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const db = getDb()
+    const db = await ensureDb()
 
     // 检查关键词是否存在
     const existing = db
